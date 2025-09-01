@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>River Raid Clone</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-header">
+            <h1>River Raid</h1>
+            <div class="score-board">
+                <div>Wynik: <span id="score">0</span></div>
+                <div>Paliwo: <span id="fuel">100</span>%</div>
+                <div>Życia: <span id="lives">3</span></div>
+            </div>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="controls">
+            <p>Sterowanie: Strzałki lub WASD, Spacja - strzał</p>
+            <button id="startBtn">Start Gry</button>
+            <button id="pauseBtn">Pauza</button>
+        </div>
+        <div id="gameOver" class="game-over hidden">
+            <h2>Koniec Gry!</h2>
+            <p>Twój wynik: <span id="finalScore">0</span></p>
+            <button id="restartBtn">Zagraj Ponownie</button>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>

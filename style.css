@@ -1,0 +1,138 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #001122;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(180deg, #001122 0%, #003366 100%);
+}
+
+.game-container {
+    text-align: center;
+    padding: 20px;
+}
+
+.game-header {
+    margin-bottom: 20px;
+}
+
+h1 {
+    font-size: 2.5em;
+    margin-bottom: 15px;
+    color: #00ff88;
+    text-shadow: 0 0 10px #00ff88;
+}
+
+.score-board {
+    display: flex;
+    justify-content: space-around;
+    background: rgba(0, 255, 136, 0.1);
+    padding: 10px;
+    border-radius: 10px;
+    border: 2px solid #00ff88;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.score-board div {
+    font-size: 1.2em;
+    font-weight: bold;
+}
+
+#gameCanvas {
+    border: 3px solid #00ff88;
+    border-radius: 10px;
+    background: #000033;
+    display: block;
+    margin: 20px auto;
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+.controls {
+    margin-top: 20px;
+}
+
+.controls p {
+    margin-bottom: 15px;
+    color: #aaaaaa;
+}
+
+button {
+    background: linear-gradient(45deg, #00ff88, #00cc66);
+    color: #001122;
+    border: none;
+    padding: 12px 25px;
+    margin: 0 10px;
+    border-radius: 5px;
+    font-size: 1.1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+button:hover {
+    background: linear-gradient(45deg, #00cc66, #00aa44);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 255, 136, 0.4);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+.game-over {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 17, 34, 0.95);
+    padding: 40px;
+    border-radius: 15px;
+    border: 3px solid #ff4444;
+    text-align: center;
+    box-shadow: 0 0 30px rgba(255, 68, 68, 0.5);
+}
+
+.game-over h2 {
+    color: #ff4444;
+    margin-bottom: 20px;
+    font-size: 2em;
+}
+
+.game-over p {
+    margin-bottom: 25px;
+    font-size: 1.3em;
+}
+
+.hidden {
+    display: none;
+}
+
+@keyframes explosion {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.5);
+        opacity: 0.7;
+    }
+
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+.explosion {
+    animation: explosion 0.5s ease-out;
+}
