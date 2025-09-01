@@ -30,10 +30,13 @@ class RiverRaidGame {
         this.explosions = [];
         this.particles = [];
 
-        // River (brzegi rzeki)
-        this.riverLeft = 100;
-        this.riverRight = this.width - 100;
-        this.riverWidth = this.riverRight - this.riverLeft;
+        // River (brzegi rzeki) - dynamiczna mapa
+        this.riverSegments = [];
+        this.segmentHeight = 20;
+        this.mapSpeed = 2;
+        this.riverVariationSpeed = 0.02;
+        this.riverTime = 0;
+        this.initializeRiver();
 
         // Kontrole
         this.keys = {};
@@ -47,6 +50,117 @@ class RiverRaidGame {
         this.fuelDecreaseTimer = 0;
 
         this.gameLoop();
+    }
+
+    initializeRiver() {
+        // Inicjalizuj segmenty rzeki
+        for (let i = 0; i < Math.ceil(this.height / this.segmentHeight) + 5; i++) {
+            const y = i * this.segmentHeight;
+            const baseLeft = 100;
+            const baseRight = this.width - 100;
+
+            this.riverSegments.push({
+                y: y,
+                leftBank: baseLeft,
+                rightBank: baseRight,
+                width: baseRight - baseLeft
+            });
+        }
+    }
+
+    updateRiver() {
+        this.riverTime += this.riverVariationSpeed;
+
+        // Przesuń wszystkie segmenty w dół
+        this.riverSegments.forEach(segment => {
+            segment.y += this.mapSpeed;
+        });
+
+        // Usuń segmenty, które wyszły poza dolną krawędź
+        this.riverSegments = this.riverSegments.filter(segment => segment.y < this.height + 50);
+
+        // Dodaj nowe segmenty na górze
+        while (this.riverSegments.length === 0 || this.riverSegments[0].y > -this.segmentHeight) {
+            const topY = this.riverSegments.length > 0 ? this.riverSegments[0].y - this.segmentHeight : -this.segmentHeight;
+
+            // Łagodniejszy kształt rzeki z większymi zmianami szerokości
+            let leftBank, rightBank;
+
+            // Zmniejszone falowanie dla mniej krętej rzeki
+            const timeOffset = -topY * 0.003; // zmniejszony mnożnik dla łagodniejszych zakrętów
+
+            // Główne, łagodne falowanie rzeki
+            const mainCurve = Math.sin(timeOffset * 0.4 + this.riverTime * 0.8) * 40; // zmniejszona częstotliwość i amplituda
+
+            // Bardziej wyraźne zmiany szerokości rzeki
+            const widthVariation = Math.sin(timeOffset * 0.3 + this.riverTime * 0.5) * 80; // większa zmiana szerokości
+            const baseWidth = 250 + widthVariation; // zwiększona bazowa szerokość
+
+            // Centrum rzeki z łagodnymi krzywizną
+            const centerX = this.width / 2 + mainCurve;
+
+            // Oblicz pozycje brzegów
+            leftBank = centerX - baseWidth / 2;
+            rightBank = centerX + baseWidth / 2;
+
+            // Zapewnij, że rzeka nie wyjdzie poza granice ekranu
+            const minBorder = 50;
+            const maxBorder = this.width - 50;
+
+            if (leftBank < minBorder) {
+                const shift = minBorder - leftBank;
+                leftBank = minBorder;
+                rightBank += shift;
+            }
+            if (rightBank > maxBorder) {
+                const shift = rightBank - maxBorder;
+                rightBank = maxBorder;
+                leftBank -= shift;
+            }
+
+            // Zapewnij minimalną szerokość rzeki (większą niż wcześniej)
+            const minWidth = 200;
+            if (rightBank - leftBank < minWidth) {
+                const center = (leftBank + rightBank) / 2;
+                leftBank = center - minWidth / 2;
+                rightBank = center + minWidth / 2;
+
+                // Ponownie sprawdź granice
+                if (leftBank < minBorder) {
+                    leftBank = minBorder;
+                    rightBank = leftBank + minWidth;
+                }
+                if (rightBank > maxBorder) {
+                    rightBank = maxBorder;
+                    leftBank = rightBank - minWidth;
+                }
+            }
+
+            this.riverSegments.unshift({
+                y: topY,
+                leftBank: leftBank,
+                rightBank: rightBank,
+                width: rightBank - leftBank
+            });
+        }
+    } getCurrentRiverBounds(y) {
+        // Znajdź segmenty rzeki dla danej pozycji Y
+        const segment = this.riverSegments.find(seg =>
+            y >= seg.y && y < seg.y + this.segmentHeight
+        );
+
+        if (segment) {
+            return {
+                left: segment.leftBank,
+                right: segment.rightBank
+            };
+        }
+
+        // Fallback do domyślnych granic
+        return {
+            left: 100,
+            right: this.width - 100
+        };
     }
 
     setupControls() {
@@ -116,6 +230,11 @@ class RiverRaidGame {
         this.fuelTankSpawnTimer = 0;
         this.fuelDecreaseTimer = 0;
 
+        // Reset rzeki
+        this.riverSegments = [];
+        this.riverTime = 0;
+        this.initializeRiver();
+
         this.updateUI();
     }
 
@@ -142,8 +261,9 @@ class RiverRaidGame {
             this.player.y += this.player.speed;
         }
 
-        // Ograniczenia ruchu gracza
-        this.player.x = Math.max(this.riverLeft + 10, Math.min(this.riverRight - this.player.width - 10, this.player.x));
+        // Ograniczenia ruchu gracza - używaj dynamicznych granic rzeki
+        const riverBounds = this.getCurrentRiverBounds(this.player.y);
+        this.player.x = Math.max(riverBounds.left + 10, Math.min(riverBounds.right - this.player.width - 10, this.player.x));
         this.player.y = Math.max(50, Math.min(this.height - this.player.height - 10, this.player.y));
     }
 
@@ -161,53 +281,54 @@ class RiverRaidGame {
 
     spawnEnemies() {
         this.enemySpawnTimer += 16;
-        if (this.enemySpawnTimer > 1500 - (this.gameSpeed * 100)) {
+        if (this.enemySpawnTimer > 2500 - (this.gameSpeed * 100)) { // Zwiększony czas spawn (było 1500)
             this.enemySpawnTimer = 0;
 
-            // Spawn różnych typów wrogów z ruchem poziomym
+            // Pobierz aktualne granice rzeki dla spawnu
+            const spawnY = Math.random() * (this.height - 150) + 50;
+            const riverBounds = this.getCurrentRiverBounds(spawnY);
+
+            // Spawn różnych typów wrogów w rzece z ruchem poziomym
             const enemyType = Math.random();
             const side = Math.random() < 0.5 ? 'left' : 'right';
             let enemy;
 
             if (enemyType < 0.6) {
-                // Zwykły wróg
+                // Zwykły wróg - spawn na brzegu rzeki
                 enemy = {
-                    x: side === 'left' ? this.riverLeft - 25 : this.riverRight + 25,
-                    y: Math.random() * (this.height - 150) + 50,
+                    x: side === 'left' ? riverBounds.left : riverBounds.right - 25,
+                    y: spawnY,
                     width: 25,
                     height: 25,
-                    speed: 1.5 + Math.random() * 1.5,
-                    horizontalSpeed: side === 'left' ? 1 : -1,
+                    speed: 1.5 + Math.random() * 1.0, // prędkość pozioma
+                    horizontalSpeed: side === 'left' ? 1 : -1, // kierunek ruchu
                     type: 'normal',
-                    color: '#ff4444',
-                    side: side
+                    color: '#ff4444'
                 };
             } else if (enemyType < 0.8) {
-                // Szybki wróg
+                // Szybki wróg - spawn na brzegu rzeki
                 enemy = {
-                    x: side === 'left' ? this.riverLeft - 20 : this.riverRight + 20,
-                    y: Math.random() * (this.height - 150) + 50,
+                    x: side === 'left' ? riverBounds.left : riverBounds.right - 20,
+                    y: spawnY,
                     width: 20,
                     height: 20,
-                    speed: 2.5 + Math.random() * 2,
+                    speed: 2.0 + Math.random() * 1.5, // szybszy ruch poziomy
                     horizontalSpeed: side === 'left' ? 1 : -1,
                     type: 'fast',
-                    color: '#ff8844',
-                    side: side
+                    color: '#ff8844'
                 };
             } else {
-                // Duży wróg
+                // Duży wróg - spawn na brzegu rzeki
                 enemy = {
-                    x: side === 'left' ? this.riverLeft - 40 : this.riverRight + 40,
-                    y: Math.random() * (this.height - 150) + 50,
+                    x: side === 'left' ? riverBounds.left : riverBounds.right - 40,
+                    y: spawnY,
                     width: 40,
                     height: 30,
-                    speed: 1 + Math.random() * 1,
+                    speed: 1.0 + Math.random() * 0.8, // wolniejszy ale silniejszy
                     horizontalSpeed: side === 'left' ? 1 : -1,
                     type: 'big',
                     color: '#ff0000',
-                    health: 3,
-                    side: side
+                    health: 3
                 };
             }
 
@@ -217,21 +338,20 @@ class RiverRaidGame {
 
     spawnObstacles() {
         this.obstacleSpawnTimer += 16;
-        if (this.obstacleSpawnTimer > 2000) {
+        if (this.obstacleSpawnTimer > 3500) { // Zwiększony czas spawn (było 2000)
             this.obstacleSpawnTimer = 0;
 
-            // Przeszkody poruszające się poziomo przez rzekę
-            if (Math.random() < 0.7) {
-                const side = Math.random() < 0.5 ? 'left' : 'right';
+            // Przeszkody w rzece - spawn na górze
+            if (Math.random() < 0.15) { // mniejsza szansa na przeszkody
+                const spawnY = -50;
+                const riverBounds = this.getCurrentRiverBounds(100);
+
                 const obstacle = {
-                    x: side === 'left' ? this.riverLeft - 30 : this.riverRight + 30,
-                    y: Math.random() * (this.height - 100) + 50,
+                    x: riverBounds.left + Math.random() * (riverBounds.right - riverBounds.left - 30),
+                    y: spawnY,
                     width: 30,
                     height: 40,
-                    speed: 2 + Math.random() * 2,
-                    horizontalSpeed: side === 'left' ? 1 : -1,
-                    type: 'rock',
-                    side: side
+                    type: 'rock'
                 };
                 this.obstacles.push(obstacle);
             }
@@ -244,15 +364,14 @@ class RiverRaidGame {
             this.fuelTankSpawnTimer = 0;
 
             if (this.fuel < 60) {
-                const side = Math.random() < 0.5 ? 'left' : 'right';
+                const spawnY = -50;
+                const riverBounds = this.getCurrentRiverBounds(100);
+
                 const fuelTank = {
-                    x: side === 'left' ? this.riverLeft - 25 : this.riverRight + 25,
-                    y: Math.random() * (this.height - 150) + 50,
+                    x: riverBounds.left + Math.random() * (riverBounds.right - riverBounds.left - 25),
+                    y: spawnY,
                     width: 25,
-                    height: 25,
-                    speed: 1.5 + Math.random(),
-                    horizontalSpeed: side === 'left' ? 1 : -1,
-                    side: side
+                    height: 25
                 };
                 this.fuelTanks.push(fuelTank);
             }
@@ -268,47 +387,40 @@ class RiverRaidGame {
 
     updateEnemies() {
         this.enemies = this.enemies.filter(enemy => {
-            // Ruch poziomy główny
+            // Ruch poziomy
             enemy.x += enemy.horizontalSpeed * enemy.speed;
 
-            // Lekki ruch pionowy w dół
-            enemy.y += this.gameSpeed * 0.3;
-
-            // Dodaj specjalne zachowania dla różnych typów wrogów
-            if (enemy.type === 'fast') {
-                // Szybki wróg ma sinusoidalny ruch pionowy
-                enemy.y += Math.sin(enemy.x * 0.02) * 0.8;
-            } else if (enemy.type === 'big') {
-                // Duży wróg porusza się wolniej pionowo
-                enemy.y += this.gameSpeed * 0.1;
+            // Sprawdź granice rzeki i odbij się od brzegów
+            const riverBounds = this.getCurrentRiverBounds(enemy.y);
+            if (enemy.x <= riverBounds.left || enemy.x + enemy.width >= riverBounds.right) {
+                enemy.horizontalSpeed *= -1; // zmień kierunek
             }
 
-            // Usuń wrogów, którzy wyszli poza ekran
-            return enemy.x > -50 && enemy.x < this.width + 50 && enemy.y < this.height + 50;
+            // Trzymaj wrogów w granicach rzeki
+            enemy.x = Math.max(riverBounds.left, Math.min(riverBounds.right - enemy.width, enemy.x));
+
+            // Usuń wrogów tylko gdy są bardzo daleko poza ekranem
+            return enemy.x > -100 && enemy.x < this.width + 100;
         });
     }
 
     updateObstacles() {
         this.obstacles = this.obstacles.filter(obstacle => {
-            // Ruch poziomy
-            obstacle.x += obstacle.horizontalSpeed * obstacle.speed;
-            // Lekki ruch pionowy w dół
-            obstacle.y += this.gameSpeed * 0.5;
+            // Ruch pionowy w dół
+            obstacle.y += this.mapSpeed;
 
             // Usuń przeszkody, które wyszły poza ekran
-            return obstacle.x > -50 && obstacle.x < this.width + 50 && obstacle.y < this.height + 50;
+            return obstacle.y < this.height + 50;
         });
     }
 
     updateFuelTanks() {
         this.fuelTanks = this.fuelTanks.filter(tank => {
-            // Ruch poziomy
-            tank.x += tank.horizontalSpeed * tank.speed;
-            // Lekki ruch pionowy w dół
-            tank.y += this.gameSpeed * 0.4;
+            // Ruch pionowy w dół
+            tank.y += this.mapSpeed;
 
             // Usuń zbiorniki, które wyszły poza ekran
-            return tank.x > -50 && tank.x < this.width + 50 && tank.y < this.height + 50;
+            return tank.y < this.height + 50;
         });
     }
 
@@ -382,7 +494,8 @@ class RiverRaidGame {
         });
 
         // Sprawdź czy gracz nie wyszedł poza rzekę
-        if (this.player.x < this.riverLeft || this.player.x + this.player.width > this.riverRight) {
+        const playerRiverBounds = this.getCurrentRiverBounds(this.player.y);
+        if (this.player.x < playerRiverBounds.left || this.player.x + this.player.width > playerRiverBounds.right) {
             this.loseLife();
         }
     }
@@ -468,6 +581,9 @@ class RiverRaidGame {
 
         this.handleInput();
 
+        // Aktualizuj rzekę
+        this.updateRiver();
+
         this.spawnEnemies();
         this.spawnObstacles();
         this.spawnFuelTanks();
@@ -524,30 +640,104 @@ class RiverRaidGame {
     }
 
     drawRiver() {
-        // Tło rzeki
-        this.ctx.fillStyle = '#0066cc';
-        this.ctx.fillRect(this.riverLeft, 0, this.riverWidth, this.height);
+        // Narysuj segmenty rzeki z płynnymi przejściami
+        this.riverSegments.forEach((segment, index) => {
+            const nextSegment = this.riverSegments[index + 1];
 
-        // Brzegi rzeki
-        this.ctx.fillStyle = '#228833';
-        this.ctx.fillRect(0, 0, this.riverLeft, this.height);
-        this.ctx.fillRect(this.riverRight, 0, this.width - this.riverRight, this.height);
+            // Tło rzeki - narysuj płynne trapezy między segmentami
+            this.ctx.fillStyle = '#0066cc';
+            if (nextSegment) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(segment.leftBank, segment.y);
+                this.ctx.lineTo(segment.rightBank, segment.y);
+                this.ctx.lineTo(nextSegment.rightBank, nextSegment.y);
+                this.ctx.lineTo(nextSegment.leftBank, nextSegment.y);
+                this.ctx.closePath();
+                this.ctx.fill();
+            } else {
+                // Ostatni segment - narysuj prostokąt
+                this.ctx.fillRect(segment.leftBank, segment.y, segment.width, this.segmentHeight);
+            }
 
-        // Efekt wody
-        for (let i = 0; i < this.height; i += 20) {
-            this.ctx.fillStyle = `rgba(255, 255, 255, ${0.1 + Math.sin((i + Date.now() * 0.001) * 0.1) * 0.05})`;
-            this.ctx.fillRect(this.riverLeft, i, this.riverWidth, 2);
-        }
+            // Brzegi rzeki z naturalnymi kolorami - lewa strona (ziemia/trawa)
+            this.ctx.fillStyle = '#4a7c59'; // ciemniejszy zielony dla bardziej naturalnego wyglądu
+            this.ctx.fillRect(0, segment.y, segment.leftBank, this.segmentHeight);
+
+            // Brzegi rzeki - prawa strona
+            this.ctx.fillRect(segment.rightBank, segment.y, this.width - segment.rightBank, this.segmentHeight);
+
+            // Dodaj gradację na brzegach dla lepszego efektu
+            const gradient = this.ctx.createLinearGradient(segment.leftBank - 10, 0, segment.leftBank + 10, 0);
+            gradient.addColorStop(0, '#4a7c59');
+            gradient.addColorStop(1, '#0066cc');
+            this.ctx.fillStyle = gradient;
+            this.ctx.fillRect(segment.leftBank - 5, segment.y, 10, this.segmentHeight);
+
+            const rightGradient = this.ctx.createLinearGradient(segment.rightBank - 10, 0, segment.rightBank + 10, 0);
+            rightGradient.addColorStop(0, '#0066cc');
+            rightGradient.addColorStop(1, '#4a7c59');
+            this.ctx.fillStyle = rightGradient;
+            this.ctx.fillRect(segment.rightBank - 5, segment.y, 10, this.segmentHeight);
+        });
+
+        // Efekt wody - bardziej realistyczne falowanie
+        this.riverSegments.forEach(segment => {
+            const time = Date.now() * 0.002;
+            for (let i = 0; i < segment.width; i += 15) {
+                const x = segment.leftBank + i;
+                const waveOffset = Math.sin((x + time * 50) * 0.05) * 0.08;
+                const opacity = 0.15 + waveOffset;
+                this.ctx.fillStyle = `rgba(135, 206, 235, ${Math.abs(opacity)})`;
+                this.ctx.fillRect(x, segment.y, 3, this.segmentHeight);
+
+                // Dodatkowe małe fale
+                if (i % 30 === 0) {
+                    const smallWave = Math.sin((x + time * 80) * 0.1) * 0.05;
+                    this.ctx.fillStyle = `rgba(255, 255, 255, ${0.1 + Math.abs(smallWave)})`;
+                    this.ctx.fillRect(x + 5, segment.y, 1, this.segmentHeight);
+                }
+            }
+        });
     }
 
     drawPlayer() {
-        this.ctx.fillStyle = '#00ff88';
-        this.ctx.fillRect(this.player.x, this.player.y, this.player.width, this.player.height);
+        const x = this.player.x;
+        const y = this.player.y;
+        const w = this.player.width;
+        const h = this.player.height;
 
-        // Szczegóły samolotu
+        // Kadłub samolotu (główna część)
+        this.ctx.fillStyle = '#00ff88';
+        this.ctx.fillRect(x + w / 3, y, w / 3, h * 0.8);
+
+        // Nos samolotu (ostry przód)
+        this.ctx.fillStyle = '#00cc66';
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + w / 2, y);
+        this.ctx.lineTo(x + w / 3, y + h * 0.2);
+        this.ctx.lineTo(x + 2 * w / 3, y + h * 0.2);
+        this.ctx.closePath();
+        this.ctx.fill();
+
+        // Skrzydła (większe, bardziej realistyczne)
         this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillRect(this.player.x + 10, this.player.y + 5, 10, 5);
-        this.ctx.fillRect(this.player.x + 5, this.player.y + 15, 20, 3);
+        this.ctx.fillRect(x, y + h * 0.3, w, h * 0.15);
+
+        // Mniejsze skrzydełka tylne
+        this.ctx.fillRect(x + w * 0.2, y + h * 0.7, w * 0.6, h * 0.1);
+
+        // Silniki na skrzydłach
+        this.ctx.fillStyle = '#333333';
+        this.ctx.fillRect(x + w * 0.1, y + h * 0.25, w * 0.1, h * 0.25);
+        this.ctx.fillRect(x + w * 0.8, y + h * 0.25, w * 0.1, h * 0.25);
+
+        // Kabina pilota
+        this.ctx.fillStyle = '#0088ff';
+        this.ctx.fillRect(x + w * 0.4, y + h * 0.15, w * 0.2, h * 0.2);
+
+        // Ogon samolotu
+        this.ctx.fillStyle = '#00aa55';
+        this.ctx.fillRect(x + w * 0.45, y + h * 0.8, w * 0.1, h * 0.2);
     }
 
     drawBullets() {
@@ -559,13 +749,102 @@ class RiverRaidGame {
 
     drawEnemies() {
         this.enemies.forEach(enemy => {
-            this.ctx.fillStyle = enemy.color;
-            this.ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+            const x = enemy.x;
+            const y = enemy.y;
+            const w = enemy.width;
+            const h = enemy.height;
 
-            // Dodatkowe szczegóły dla różnych typów wrogów
-            if (enemy.type === 'big') {
+            if (enemy.type === 'normal') {
+                // Helikopter wroga
+                this.ctx.fillStyle = '#ff4444';
+                // Kabina
+                this.ctx.fillRect(x + w * 0.2, y + h * 0.4, w * 0.6, h * 0.4);
+
+                // Nos helikoptera
+                this.ctx.beginPath();
+                this.ctx.moveTo(x + w * 0.2, y + h * 0.6);
+                this.ctx.lineTo(x, y + h * 0.6);
+                this.ctx.lineTo(x + w * 0.2, y + h * 0.4);
+                this.ctx.closePath();
+                this.ctx.fill();
+
+                // Ogon
+                this.ctx.fillRect(x + w * 0.8, y + h * 0.5, w * 0.2, h * 0.2);
+
+                // Wirnik główny
+                this.ctx.fillStyle = '#666666';
+                this.ctx.fillRect(x + w * 0.1, y, w * 0.8, h * 0.1);
+
+                // Wirnik ogonowy
+                this.ctx.fillRect(x + w * 0.9, y + h * 0.2, w * 0.1, h * 0.6);
+
+                // Podwozie
+                this.ctx.fillStyle = '#333333';
+                this.ctx.fillRect(x + w * 0.15, y + h * 0.8, w * 0.1, h * 0.2);
+                this.ctx.fillRect(x + w * 0.75, y + h * 0.8, w * 0.1, h * 0.2);
+
+            } else if (enemy.type === 'fast') {
+                // Mały myśliwiec wroga
+                this.ctx.fillStyle = '#ff8844';
+                // Kadłub
+                this.ctx.fillRect(x + w * 0.3, y, w * 0.4, h * 0.9);
+
+                // Nos ostry
+                this.ctx.beginPath();
+                this.ctx.moveTo(x + w / 2, y);
+                this.ctx.lineTo(x + w * 0.3, y + h * 0.3);
+                this.ctx.lineTo(x + w * 0.7, y + h * 0.3);
+                this.ctx.closePath();
+                this.ctx.fill();
+
+                // Skrzydła (małe, delta)
+                this.ctx.fillStyle = '#cc4422';
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, y + h * 0.5);
+                this.ctx.lineTo(x + w * 0.3, y + h * 0.3);
+                this.ctx.lineTo(x + w * 0.3, y + h * 0.7);
+                this.ctx.closePath();
+                this.ctx.fill();
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(x + w, y + h * 0.5);
+                this.ctx.lineTo(x + w * 0.7, y + h * 0.3);
+                this.ctx.lineTo(x + w * 0.7, y + h * 0.7);
+                this.ctx.closePath();
+                this.ctx.fill();
+
+                // Silnik
+                this.ctx.fillStyle = '#333333';
+                this.ctx.fillRect(x + w * 0.35, y + h * 0.8, w * 0.3, h * 0.2);
+
+            } else if (enemy.type === 'big') {
+                // Okręt wojenny
+                this.ctx.fillStyle = '#ff0000';
+                // Kadłub okrętu
+                this.ctx.fillRect(x, y + h * 0.6, w, h * 0.4);
+
+                // Nadbudówka
+                this.ctx.fillStyle = '#cc0000';
+                this.ctx.fillRect(x + w * 0.2, y + h * 0.3, w * 0.6, h * 0.3);
+
+                // Kominiaster
+                this.ctx.fillStyle = '#880000';
+                this.ctx.fillRect(x + w * 0.3, y, w * 0.15, h * 0.5);
+                this.ctx.fillRect(x + w * 0.55, y, w * 0.15, h * 0.5);
+
+                // Działa
+                this.ctx.fillStyle = '#333333';
+                this.ctx.fillRect(x + w * 0.1, y + h * 0.4, w * 0.2, h * 0.1);
+                this.ctx.fillRect(x + w * 0.7, y + h * 0.4, w * 0.2, h * 0.1);
+
+                // Radar/anteny
+                this.ctx.fillStyle = '#666666';
+                this.ctx.fillRect(x + w * 0.45, y, w * 0.05, h * 0.3);
+                this.ctx.fillRect(x + w * 0.4, y, w * 0.15, h * 0.05);
+
+                // Linia wodna
                 this.ctx.fillStyle = '#ffffff';
-                this.ctx.fillRect(enemy.x + 5, enemy.y + 5, enemy.width - 10, 5);
+                this.ctx.fillRect(x, y + h * 0.85, w, h * 0.05);
             }
         });
     }
