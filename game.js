@@ -29,6 +29,7 @@ class RiverRaidGame {
         this.fuelTanks = [];
         this.explosions = [];
         this.particles = [];
+        this.groundFeatures = [];
 
         // River (brzegi rzeki) - dynamiczna mapa
         this.riverSegments = [];
@@ -48,6 +49,7 @@ class RiverRaidGame {
         this.obstacleSpawnTimer = 0;
         this.fuelTankSpawnTimer = 0;
         this.fuelDecreaseTimer = 0;
+        this.groundFeatureSpawnTimer = 0;
 
         this.gameLoop();
     }
@@ -82,30 +84,33 @@ class RiverRaidGame {
         // Dodaj nowe segmenty na górze
         while (this.riverSegments.length === 0 || this.riverSegments[0].y > -this.segmentHeight) {
             const topY = this.riverSegments.length > 0 ? this.riverSegments[0].y - this.segmentHeight : -this.segmentHeight;
+            const lastSegment = this.riverSegments[0] || {
+                leftBank: this.width / 2 - 150,
+                rightBank: this.width / 2 + 150
+            };
 
-            // Łagodniejszy kształt rzeki z większymi zmianami szerokości
-            let leftBank, rightBank;
+            let leftBank = lastSegment.leftBank;
+            let rightBank = lastSegment.rightBank;
 
-            // Zmniejszone falowanie dla mniej krętej rzeki
-            const timeOffset = -topY * 0.003; // zmniejszony mnożnik dla łagodniejszych zakrętów
+            // Zmiana co określony czas
+            if (Math.random() < 0.05) { // Rzadsze, ale bardziej zdecydowane zmiany
+                const action = Math.random();
+                if (action < 0.33) { // Zmiana szerokości
+                    const change = (Math.random() - 0.5) * 100;
+                    leftBank += change / 2;
+                    rightBank -= change / 2;
+                } else if (action < 0.66) { // Przesunięcie rzeki
+                    const shift = (Math.random() - 0.5) * 80;
+                    leftBank += shift;
+                    rightBank += shift;
+                }
+                // else: brak zmian, prosta rzeka
+            }
 
-            // Główne, łagodne falowanie rzeki
-            const mainCurve = Math.sin(timeOffset * 0.4 + this.riverTime * 0.8) * 40; // zmniejszona częstotliwość i amplituda
-
-            // Bardziej wyraźne zmiany szerokości rzeki
-            const widthVariation = Math.sin(timeOffset * 0.3 + this.riverTime * 0.5) * 80; // większa zmiana szerokości
-            const baseWidth = 250 + widthVariation; // zwiększona bazowa szerokość
-
-            // Centrum rzeki z łagodnymi krzywizną
-            const centerX = this.width / 2 + mainCurve;
-
-            // Oblicz pozycje brzegów
-            leftBank = centerX - baseWidth / 2;
-            rightBank = centerX + baseWidth / 2;
 
             // Zapewnij, że rzeka nie wyjdzie poza granice ekranu
-            const minBorder = 50;
-            const maxBorder = this.width - 50;
+            const minBorder = 30;
+            const maxBorder = this.width - 30;
 
             if (leftBank < minBorder) {
                 const shift = minBorder - leftBank;
@@ -118,8 +123,8 @@ class RiverRaidGame {
                 leftBank -= shift;
             }
 
-            // Zapewnij minimalną szerokość rzeki (większą niż wcześniej)
-            const minWidth = 200;
+            // Zapewnij minimalną szerokość rzeki
+            const minWidth = 100;
             if (rightBank - leftBank < minWidth) {
                 const center = (leftBank + rightBank) / 2;
                 leftBank = center - minWidth / 2;
@@ -135,6 +140,7 @@ class RiverRaidGame {
                     leftBank = rightBank - minWidth;
                 }
             }
+
 
             this.riverSegments.unshift({
                 y: topY,
@@ -224,11 +230,13 @@ class RiverRaidGame {
         this.fuelTanks = [];
         this.explosions = [];
         this.particles = [];
+        this.groundFeatures = [];
 
         this.enemySpawnTimer = 0;
         this.obstacleSpawnTimer = 0;
         this.fuelTankSpawnTimer = 0;
         this.fuelDecreaseTimer = 0;
+        this.groundFeatureSpawnTimer = 0;
 
         // Reset rzeki
         this.riverSegments = [];
@@ -320,10 +328,10 @@ class RiverRaidGame {
             } else {
                 // Duży wróg - spawn na brzegu rzeki
                 enemy = {
-                    x: side === 'left' ? riverBounds.left : riverBounds.right - 40,
+                    x: side === 'left' ? riverBounds.left : riverBounds.right - 60,
                     y: spawnY,
-                    width: 40,
-                    height: 30,
+                    width: 60,
+                    height: 45,
                     speed: 1.0 + Math.random() * 0.8, // wolniejszy ale silniejszy
                     horizontalSpeed: side === 'left' ? 1 : -1,
                     type: 'big',
@@ -378,6 +386,48 @@ class RiverRaidGame {
         }
     }
 
+    spawnGroundFeatures() {
+        this.groundFeatureSpawnTimer += 16;
+        if (this.groundFeatureSpawnTimer > 500) {
+            this.groundFeatureSpawnTimer = 0;
+
+            if (Math.random() < 0.5) {
+                const spawnY = -50;
+                const side = Math.random() < 0.5 ? 'left' : 'right';
+                const riverBounds = this.getCurrentRiverBounds(100);
+
+                const bankWidth = side === 'left' ? riverBounds.left : this.width - riverBounds.right;
+                if (bankWidth < 20) return;
+
+                const x = side === 'left' ?
+                    Math.random() * (riverBounds.left - 20) :
+                    riverBounds.right + (Math.random() * (this.width - riverBounds.right - 20));
+
+                const featureType = Math.random();
+                let feature;
+
+                if (featureType < 0.7) {
+                    feature = {
+                        x: x,
+                        y: spawnY,
+                        width: 15,
+                        height: 25,
+                        color: '#228B22'
+                    };
+                } else { // Kamień
+                    feature = {
+                        x: x,
+                        y: spawnY,
+                        width: 10,
+                        height: 10,
+                        color: '#808080'
+                    };
+                }
+                this.groundFeatures.push(feature);
+            }
+        }
+    }
+
     updateBullets() {
         this.player.bullets = this.player.bullets.filter(bullet => {
             bullet.y -= bullet.speed;
@@ -421,6 +471,13 @@ class RiverRaidGame {
 
             // Usuń zbiorniki, które wyszły poza ekran
             return tank.y < this.height + 50;
+        });
+    }
+
+    updateGroundFeatures() {
+        this.groundFeatures = this.groundFeatures.filter(feature => {
+            feature.y += this.mapSpeed;
+            return feature.y < this.height + 50;
         });
     }
 
@@ -587,11 +644,13 @@ class RiverRaidGame {
         this.spawnEnemies();
         this.spawnObstacles();
         this.spawnFuelTanks();
+        this.spawnGroundFeatures();
 
         this.updateBullets();
         this.updateEnemies();
         this.updateObstacles();
         this.updateFuelTanks();
+        this.updateGroundFeatures();
         this.updateExplosions();
         this.updateParticles();
 
@@ -608,6 +667,7 @@ class RiverRaidGame {
 
         // Narysuj rzekę
         this.drawRiver();
+        this.drawGroundFeatures();
 
         if (this.gameState === 'playing' || this.gameState === 'paused') {
             // Narysuj gracza
@@ -640,12 +700,10 @@ class RiverRaidGame {
     }
 
     drawRiver() {
-        // Narysuj segmenty rzeki z płynnymi przejściami
+        // Narysuj rzekę
+        this.ctx.fillStyle = '#0066cc';
         this.riverSegments.forEach((segment, index) => {
             const nextSegment = this.riverSegments[index + 1];
-
-            // Tło rzeki - narysuj płynne trapezy między segmentami
-            this.ctx.fillStyle = '#0066cc';
             if (nextSegment) {
                 this.ctx.beginPath();
                 this.ctx.moveTo(segment.leftBank, segment.y);
@@ -655,48 +713,22 @@ class RiverRaidGame {
                 this.ctx.closePath();
                 this.ctx.fill();
             } else {
-                // Ostatni segment - narysuj prostokąt
                 this.ctx.fillRect(segment.leftBank, segment.y, segment.width, this.segmentHeight);
             }
-
-            // Brzegi rzeki z naturalnymi kolorami - lewa strona (ziemia/trawa)
-            this.ctx.fillStyle = '#4a7c59'; // ciemniejszy zielony dla bardziej naturalnego wyglądu
-            this.ctx.fillRect(0, segment.y, segment.leftBank, this.segmentHeight);
-
-            // Brzegi rzeki - prawa strona
-            this.ctx.fillRect(segment.rightBank, segment.y, this.width - segment.rightBank, this.segmentHeight);
-
-            // Dodaj gradację na brzegach dla lepszego efektu
-            const gradient = this.ctx.createLinearGradient(segment.leftBank - 10, 0, segment.leftBank + 10, 0);
-            gradient.addColorStop(0, '#4a7c59');
-            gradient.addColorStop(1, '#0066cc');
-            this.ctx.fillStyle = gradient;
-            this.ctx.fillRect(segment.leftBank - 5, segment.y, 10, this.segmentHeight);
-
-            const rightGradient = this.ctx.createLinearGradient(segment.rightBank - 10, 0, segment.rightBank + 10, 0);
-            rightGradient.addColorStop(0, '#0066cc');
-            rightGradient.addColorStop(1, '#4a7c59');
-            this.ctx.fillStyle = rightGradient;
-            this.ctx.fillRect(segment.rightBank - 5, segment.y, 10, this.segmentHeight);
         });
 
-        // Efekt wody - bardziej realistyczne falowanie
+        // Narysuj brzegi
+        this.ctx.fillStyle = '#4a7c59';
         this.riverSegments.forEach(segment => {
-            const time = Date.now() * 0.002;
-            for (let i = 0; i < segment.width; i += 15) {
-                const x = segment.leftBank + i;
-                const waveOffset = Math.sin((x + time * 50) * 0.05) * 0.08;
-                const opacity = 0.15 + waveOffset;
-                this.ctx.fillStyle = `rgba(135, 206, 235, ${Math.abs(opacity)})`;
-                this.ctx.fillRect(x, segment.y, 3, this.segmentHeight);
+            this.ctx.fillRect(0, segment.y, segment.leftBank, this.segmentHeight + 1);
+            this.ctx.fillRect(segment.rightBank, segment.y, this.width - segment.rightBank, this.segmentHeight + 1);
+        });
+    }
 
-                // Dodatkowe małe fale
-                if (i % 30 === 0) {
-                    const smallWave = Math.sin((x + time * 80) * 0.1) * 0.05;
-                    this.ctx.fillStyle = `rgba(255, 255, 255, ${0.1 + Math.abs(smallWave)})`;
-                    this.ctx.fillRect(x + 5, segment.y, 1, this.segmentHeight);
-                }
-            }
+    drawGroundFeatures() {
+        this.groundFeatures.forEach(feature => {
+            this.ctx.fillStyle = feature.color;
+            this.ctx.fillRect(feature.x, feature.y, feature.width, feature.height);
         });
     }
 
